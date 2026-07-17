@@ -1,5 +1,6 @@
 # Pinned for reproducibility — every rectification run logs these versions.
-pyswisseph==2.10.3.2
+pyswisseph==2.10.3.1
+setuptools<80
 # Swiss Ephemeris C library bundled with the above: 2.10.03
 # Ephemeris backend: Moshier (built-in, no external .se1 data files required).
 # For the gold-standard JPL-derived files, download the Swiss Ephemeris .se1
