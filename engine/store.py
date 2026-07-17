@@ -161,6 +161,8 @@ def connect(path: str) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON;")
     return conn
+
+
 def init_db(path: str) -> sqlite3.Connection:
     conn = connect(path)
     conn.executescript(_SCHEMA)
@@ -216,6 +218,18 @@ def set_birth_data(
     conn.commit()
 
 
+def _check_event_fields(category, valence, date_precision, importance, event_date) -> None:
+    if category not in CATEGORIES:
+        raise ValueError(f"category must be one of {sorted(CATEGORIES)}, got {category!r}")
+    if valence not in VALENCES:
+        raise ValueError(f"valence must be one of {sorted(VALENCES)}, got {valence!r}")
+    if date_precision not in DATE_PRECISIONS:
+        raise ValueError(f"date_precision must be one of {sorted(DATE_PRECISIONS)}, got {date_precision!r}")
+    if not (1 <= int(importance) <= 10):
+        raise ValueError(f"importance must be 1..10, got {importance}")
+    datetime.strptime(event_date, "%Y-%m-%d")  # validate ISO date
+
+
 def add_event(
     conn: sqlite3.Connection,
     subject_id: int,
@@ -227,15 +241,7 @@ def add_event(
     importance: int,
     notes: str | None = None,
 ) -> int:
-    if category not in CATEGORIES:
-        raise ValueError(f"category must be one of {sorted(CATEGORIES)}, got {category!r}")
-    if valence not in VALENCES:
-        raise ValueError(f"valence must be one of {sorted(VALENCES)}, got {valence!r}")
-    if date_precision not in DATE_PRECISIONS:
-        raise ValueError(f"date_precision must be one of {sorted(DATE_PRECISIONS)}, got {date_precision!r}")
-    if not (1 <= int(importance) <= 10):
-        raise ValueError(f"importance must be 1..10, got {importance}")
-    datetime.strptime(event_date, "%Y-%m-%d")  # validate ISO date
+    _check_event_fields(category, valence, date_precision, importance, event_date)
     cur = conn.execute(
         """INSERT INTO events
            (subject_id, title, category, valence, event_date, date_precision, importance, notes)
@@ -244,6 +250,33 @@ def add_event(
     )
     conn.commit()
     return int(cur.lastrowid)
+
+
+def update_event(
+    conn: sqlite3.Connection,
+    event_id: int,
+    title: str,
+    category: str,
+    valence: str,
+    event_date: str,
+    date_precision: str,
+    importance: int,
+    notes: str | None = None,
+) -> None:
+    _check_event_fields(category, valence, date_precision, importance, event_date)
+    conn.execute(
+        """UPDATE events
+           SET title = ?, category = ?, valence = ?, event_date = ?,
+               date_precision = ?, importance = ?, notes = ?
+           WHERE id = ?""",
+        (title, category, valence, event_date, date_precision, int(importance), notes, event_id),
+    )
+    conn.commit()
+
+
+def delete_event(conn: sqlite3.Connection, event_id: int) -> None:
+    conn.execute("DELETE FROM events WHERE id = ?", (event_id,))
+    conn.commit()
 
 
 # =============================================================================
