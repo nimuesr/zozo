@@ -1,0 +1,306 @@
+"""
+app.py -- the thin UI for the Chart Rectification research tool (Task 5).
+
+Run locally with:   streamlit run app.py
+
+This is ONLY a face on the engine (ephemeris/store/rules/scoring/rectify). It adds
+no astrology and no scoring of its own; it enters data, triggers a run, and
+renders the honest, noise-aware results. Every number shown is within-system and
+relative -- never a probability of being the true birth time.
+"""
+
+import os
+import pandas as pd
+import numpy as np
+import altair as alt
+import streamlit as st
+
+from engine import store, scoring, ephemeris as eph, rectify
+from engine.rules import load_rules
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(HERE, "data", "rectify.db")
+RULES_PATH = os.path.join(HERE, "rules.yaml")
+
+FRAMING = (
+    "This tool ranks candidate birth times by how well they fit your logged events, "
+    "**compared with random timelines**. It **cannot determine your true birth time**. "
+    "Every number is relative and within-system — not a probability of being correct."
+)
+
+st.set_page_config(page_title="Chart Rectification — research", layout="wide")
+
+
+# --------------------------------------------------------------------------- #
+# helpers
+# --------------------------------------------------------------------------- #
+@st.cache_resource
+def get_conn():
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    return store.init_db(DB_PATH)
+
+
+@st.cache_resource
+def get_rules():
+    return load_rules(RULES_PATH)
+
+
+def rising_sign(birth, hhmm):
+    jd = scoring._candidate_jd(birth, hhmm)
+    asc = eph.chart_angles(jd, birth.latitude, birth.longitude).ascendant
+    return eph.sign_name(asc)
+
+
+# --------------------------------------------------------------------------- #
+# header
+# --------------------------------------------------------------------------- #
+st.title("Chart Rectification — research instrument")
+st.info(FRAMING, icon="⚖️")
+st.caption(
+    "Calculation-first · rankings never certainty · every score is traceable · "
+    "the seven scoring rules are frozen, untested hypotheses (see rules.yaml)."
+)
+
+conn = get_conn()
+rules = get_rules()
+
+
+# --------------------------------------------------------------------------- #
+# sidebar: subject selection / creation
+# --------------------------------------------------------------------------- #
+st.sidebar.header("Subject")
+subjects = store.list_subjects(conn)
+labels = {f"#{s.id} · {s.name}": s.id for s in subjects}
+choice = st.sidebar.selectbox("Choose a subject", ["➕ New subject…"] + list(labels.keys()))
+
+if choice == "➕ New subject…":
+    with st.sidebar.form("new_subject"):
+        new_name = st.text_input("Name")
+        new_notes = st.text_area("Notes", height=60)
+        if st.form_submit_button("Create subject") and new_name.strip():
+            sid = store.add_subject(conn, new_name.strip(), new_notes.strip() or None)
+            st.rerun()
+    st.stop()
+
+subject_id = labels[choice]
+subject = store.get_subject(conn, subject_id)
+birth = store.get_birth_data(conn, subject_id)
+events = store.list_events(conn, subject_id)
+
+st.sidebar.caption(subject.notes or "")
+
+
+# --------------------------------------------------------------------------- #
+# tabs
+# --------------------------------------------------------------------------- #
+tab_data, tab_events, tab_run = st.tabs(["1 · Birth data", "2 · Timeline", "3 · Rectify"])
+
+# ---- 1. birth data -------------------------------------------------------- #
+with tab_data:
+    st.subheader(f"Birth data — {subject.name}")
+    with st.form("birth_data"):
+        c1, c2, c3 = st.columns(3)
+        birth_date = c1.text_input("Birth date (YYYY-MM-DD)", birth.birth_date if birth else "")
+        lat = c2.number_input("Latitude (N +)", value=birth.latitude if birth else 0.0, format="%.4f")
+        lon = c3.number_input("Longitude (E +)", value=birth.longitude if birth else 0.0, format="%.4f")
+        c4, c5, c6 = st.columns(3)
+        offset = c4.number_input("UTC offset (hours; local = UT + offset)",
+                                 value=birth.utc_offset_hours if birth else 0.0, format="%.4f")
+        known = c5.text_input("Known time (HH:MM, optional — VALIDATION ONLY, never rectified)",
+                              birth.known_time if birth and birth.known_time else "")
+        tz_note = c6.text_input("Timezone note", birth.tz_note if birth and birth.tz_note else "")
+        c7, c8 = st.columns(2)
+        s_start = c7.text_input("Search window start (HH:MM)", birth.search_start if birth else "00:00")
+        s_end = c8.text_input("Search window end (HH:MM)", birth.search_end if birth else "23:59")
+        if st.form_submit_button("Save birth data"):
+            try:
+                store.set_birth_data(conn, subject_id, birth_date.strip(), float(lat), float(lon),
+                                     float(offset), tz_note.strip() or None,
+                                     known.strip() or None, s_start.strip(), s_end.strip())
+                st.success("Saved.")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Could not save: {e}")
+
+    if birth and known.strip():
+        st.caption(f"Rising sign at the stated known time ({known.strip()}): "
+                   f"**{rising_sign(birth, known.strip())}** — shown only for reference; "
+                   "the rectification never sees this time.")
+
+# ---- 2. timeline ---------------------------------------------------------- #
+with tab_events:
+    st.subheader("Life-event timeline")
+    st.caption("Reliability comes from **date precision**; salience from **importance**. "
+               "Vague, low-importance events contribute little by design.")
+
+    if events:
+        df = pd.DataFrame([{
+            "date": e.event_date, "title": e.title, "category": e.category,
+            "valence": e.valence, "importance": e.importance, "precision": e.date_precision,
+        } for e in events])
+        st.dataframe(df, use_container_width=True, hide_index=True)
+    else:
+        st.write("_No events yet._")
+
+    with st.expander("➕ Add an event"):
+        with st.form("add_event"):
+            a1, a2 = st.columns(2)
+            e_title = a1.text_input("Title")
+            e_date = a2.text_input("Date (YYYY-MM-DD)")
+            a3, a4, a5 = st.columns(3)
+            e_cat = a3.selectbox("Category", sorted(store.CATEGORIES))
+            e_val = a4.selectbox("Valence", sorted(store.VALENCES))
+            e_imp = a5.slider("Importance", 1, 10, 6)
+            e_prec = st.selectbox("Date precision", list(store.DATE_PRECISIONS))
+            if st.form_submit_button("Add event") and e_title.strip() and e_date.strip():
+                try:
+                    store.add_event(conn, subject_id, e_title.strip(), e_cat, e_val,
+                                    e_date.strip(), e_prec, int(e_imp))
+                    st.success("Added.")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Could not add: {e}")
+
+# ---- 3. rectify ----------------------------------------------------------- #
+with tab_run:
+    st.subheader("Run a rectification")
+    if not birth:
+        st.warning("Enter birth data first (tab 1).")
+    elif not events:
+        st.warning("Add at least a few timeline events first (tab 2).")
+    else:
+        r1, r2, r3 = st.columns(3)
+        step = r1.select_slider("Sweep resolution (minutes)", [1, 2, 3, 4, 5, 10], value=2)
+        nulls = r2.select_slider("Null draws (baseline)", [100, 200, 400, 600, 1000], value=400)
+        seed = r3.number_input("Random seed", value=20260717, step=1)
+        save = st.checkbox("Save this run to the database (reproducible)", value=False)
+
+        if st.button("▶ Run rectification", type="primary"):
+            with st.spinner(f"Sweeping the day at {step}-min steps with {nulls} null draws…"):
+                sweep = rectify.run_sweep(birth, events, rules, step_minutes=int(step),
+                                          null_iterations=int(nulls), seed=int(seed))
+                if save:
+                    rid = rectify.save_run(conn, subject_id, sweep, RULES_PATH)
+                    st.session_state["saved_run"] = rid
+            st.session_state["sweep"] = sweep
+            st.session_state["sweep_subject"] = subject_id
+
+        # ---- results ---- #
+        sweep = st.session_state.get("sweep")
+        if sweep and st.session_state.get("sweep_subject") == subject_id:
+            cands = sweep.candidates
+            summary = rectify.summarize(sweep)
+
+            st.divider()
+            st.markdown("### Result")
+            colA, colB, colC = st.columns(3)
+            colA.metric("Result state", summary["state"].split(" — ")[0])
+            colB.metric("Top vs next-region gap", f"{summary['gap']:.3f}")
+            colC.metric("Candidates at ceiling", f"{summary['n_ceiling']} / {summary['n']}")
+            st.caption(
+                f"**{summary['state']}.** With {summary['n']} candidate times, some reach a high "
+                "percentile purely by chance (multiple comparisons) — a high number alone is **not** "
+                "evidence. What matters is whether one region *separates* from the field."
+            )
+
+            # 24-hour fit curve (the centerpiece)
+            st.markdown("#### The 24-hour landscape")
+            curve = pd.DataFrame([{
+                "minutes": rectify._hhmm_to_min(c.local_time),
+                "time": c.local_time,
+                "internal_fit": c.internal_fit,
+                "percentile_among_alternatives": c.percentile_among_alternatives,
+                "rising_sign": rising_sign(birth, c.local_time),
+            } for c in cands]).sort_values("minutes")
+
+            metric = st.radio("Show", ["internal_fit", "percentile_among_alternatives"],
+                              horizontal=True, index=0)
+            base = alt.Chart(curve).mark_area(opacity=0.5, interpolate="monotone").encode(
+                x=alt.X("minutes:Q", title="birth time",
+                        axis=alt.Axis(values=list(range(0, 1441, 120)),
+                                      labelExpr="floor(datum.value/60) + 'h'")),
+                y=alt.Y(f"{metric}:Q", title=metric.replace("_", " ")),
+                tooltip=["time", "rising_sign", alt.Tooltip("internal_fit:Q", format=".2f"),
+                         alt.Tooltip("percentile_among_alternatives:Q", format=".3f")],
+            )
+            layers = [base]
+            if birth.known_time:
+                kmin = rectify._hhmm_to_min(birth.known_time)
+                rule = alt.Chart(pd.DataFrame({"minutes": [kmin]})).mark_rule(
+                    color="crimson", strokeDash=[4, 4], size=2).encode(x="minutes:Q")
+                layers.append(rule)
+            st.altair_chart(alt.layer(*layers).properties(height=260), use_container_width=True)
+            if birth.known_time:
+                st.caption("Dashed crimson line = the known time (validation only).")
+
+            # honest ranking table
+            st.markdown("#### Candidates — ranked by percentile-among-alternatives (noise-aware, not raw fit)")
+            table = pd.DataFrame([{
+                "rank": i + 1,
+                "time": c.local_time,
+                "rising sign": rising_sign(birth, c.local_time),
+                "pct-among-alternatives": round(c.percentile_among_alternatives, 3),
+                "evidence coverage": round(c.evidence_coverage, 2),
+                "internal fit": round(c.internal_fit, 2),
+            } for i, c in enumerate(cands[:15])])
+            st.dataframe(table, use_container_width=True, hide_index=True)
+
+            # validation: where did the known time land?
+            if birth.known_time:
+                krank = next((i for i, c in enumerate(cands) if c.local_time == birth.known_time), None)
+                if krank is not None:
+                    kc = cands[krank]
+                    st.markdown("#### Validation — where the known time landed")
+                    v1, v2, v3 = st.columns(3)
+                    v1.metric("Known time", birth.known_time)
+                    v2.metric("Rank in field", f"{krank + 1} / {len(cands)}")
+                    v3.metric("pct-among-alternatives", f"{kc.percentile_among_alternatives:.3f}")
+                    st.caption("This is one anecdote (n = 1). It cannot validate the method — only "
+                               "many independently-known charts, entered blind, can.")
+
+            # evidence ledger for a chosen candidate
+            st.markdown("#### Evidence for a candidate")
+            pick = st.selectbox("Inspect candidate",
+                                [c.local_time for c in cands[:15]], index=0)
+            chosen = next(c for c in cands if c.local_time == pick)
+            by_event = {}
+            for (eid, rid, tech, point, aspect, target, orb, pts) in chosen.hits:
+                by_event.setdefault(eid, []).append((rid, tech, point, aspect, target, orb, pts))
+            emap = {e.id: e for e in events}
+
+            supporting = [e for e in events if e.id in by_event]
+            contradicting = [e for e in events if e.id not in by_event]
+
+            cL, cR = st.columns(2)
+            with cL:
+                st.markdown("**Supporting evidence**")
+                if supporting:
+                    rows = []
+                    for e in supporting:
+                        for (rid, tech, point, aspect, target, orb, pts) in by_event[e.id]:
+                            rows.append({"event": e.title, "rule": rid, "aspect": f"{point} {aspect} {target}",
+                                         "orb°": round(orb, 2), "points": round(pts, 2)})
+                    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+                else:
+                    st.write("_No rules fired for this candidate._")
+            with cR:
+                st.markdown("**Contradicting / unexplained events**")
+                if contradicting:
+                    st.dataframe(pd.DataFrame(
+                        [{"event": e.title, "date": e.event_date, "category": e.category}
+                         for e in contradicting]), use_container_width=True, hide_index=True)
+                    st.caption("Events with no supporting contact at this time. Shown with equal "
+                               "prominence on purpose — the evidence *against* matters as much as the evidence for.")
+                else:
+                    st.write("_Every event has at least one supporting contact._")
+
+            if st.session_state.get("saved_run"):
+                st.success(f"Saved as run #{st.session_state['saved_run']} "
+                           "(reproducible from config + seed + ruleset hash).")
+
+st.divider()
+st.caption(
+    "Reminder: a rectified time can never be proven true. Validate on charts with "
+    "independently-known times (entered blind), not your own. Rigor of process is not "
+    "evidence that astrology tracks reality."
+)

@@ -1,0 +1,303 @@
+# ============================================================================
+# V1 FROZEN RULE SET  —  Chart Rectification Engine   (METHODOLOGY FROZEN)
+# ============================================================================
+# PROVENANCE NOTE:
+#   These rules were committed from established astrological tradition, selected
+#   for balanced coverage of life domains, BEFORE fitting any personal timeline
+#   and WITHOUT reference to how any real chart scores. Do not edit them to make
+#   your own chart fit better. Your own chart is exploration only; it cannot
+#   validate a rule.
+#
+# THE DOCUMENTATION FIELDS  -- three INDEPENDENT axes; none implies another:
+#
+#   1. traditional_claim / traditional_use  =  what the TRADITION ASSERTS.
+#        Provenance and usage. NOT a claim of factual validity.
+#
+#   2. empirical_status                      =  whether it has been SHOWN TO WORK.
+#        Every rule here: empirical_support = none_established (see note below),
+#        label = UNTESTED HYPOTHESIS.
+#
+#   3. falsification                         =  what evidence would count AGAINST it.
+#        Each rule states, in advance, what result would refute it. This makes the
+#        rules genuinely testable rather than protected from criticism.
+#
+#   A rule can be centuries old, universally used, and still have no empirical
+#   support. See falsification_protocol for the pre-registered success/failure test.
+#
+# NOTE ON "none_established":  these specific predictive rules have not been
+#   individually tested, AND the broader field has been tested with largely null
+#   results -- so support has not been established. This is stronger than "unknown"
+#   (which implies an open question) but does NOT assert the rules are disproved.
+#
+# FREEZE STATUS: methodology frozen. This revision only (a) renamed
+#   statistically_tested -> empirical_support and (b) added falsification fields.
+#   No rule logic was changed. Next step is code (Task 1, Part IV).
+# ============================================================================
+
+version: 1
+ruleset_id: v1-angles-core
+frozen: true
+committed_utc: "PRE-FIT"          # replace with commit timestamp; must predate first run
+
+# --- Global conventions (kept uniform on purpose to minimise the tuning surface) ---
+techniques: [transit, solar_arc]
+aspects_used:
+  conjunction: 0
+  opposition: 180                 # opp ASC = Descendant contact; opp MC = IC contact
+targets: [ASC, MC]                # ASC + MC + their opposite points = all four angles
+orb_decay:
+  type: gaussian                  # score = exp( -orb^2 / (2*sigma^2) ), hard cutoff at max_orb
+  sigma_rule: "max_orb / 2"
+# Standard orbs (do not tune per-rule): transits 1.5 deg, solar arc 1.0 deg.
+
+# ============================================================================
+# EMPIRICAL CONTEXT  (applies to the whole file)
+# ============================================================================
+empirical_context:
+  headline: >
+    As of this writing, NONE of the seven rules below has any known controlled,
+    peer-reviewed statistical validation. Each is an untested hypothesis drawn
+    from astrological tradition and practitioner experience (anecdote and case
+    studies), not from independent empirical confirmation.
+  broader_record:
+    natal_matching_tests: >
+      Natal astrology has been tested in controlled studies. The best known,
+      Carlson (Nature, 1985), found astrologers could not match natal charts to
+      personality profiles better than chance. Astrologer-side reanalyses (e.g.
+      Ertel 2009, Currey) claim marginal positive results; these are disputed and
+      appear mainly in astrology-affiliated journals, and the mainstream
+      scientific consensus remains that astrology lacks empirical support. Other
+      matching studies (McGrew & McFall 1990; Nanninga 'Astrotest' 1996/97;
+      Wyman & Vyse 2008) likewise found no better-than-chance performance.
+    rectification_specific: >
+      Directly relevant to THIS project: Geoffrey Dean's work found that
+      astrologers do not agree on rectified birth times, and his 'time twins'
+      study found no astrological similarity between people born close together
+      in time and place. There is no controlled evidence that event-based
+      rectification recovers true birth times.
+    predictive_techniques: >
+      The specific predictive methods used here (transits and solar arc
+      directions) have essentially no rigorous testing. Even astrology reference
+      sources concede these methods 'are still to pass the test of years of
+      statistical research,' and academic reviews conclude that consistent
+      empirical support 'remains elusive.' Claims that a technique is 'validated'
+      in astrological literature almost always mean 'traditionally established /
+      widely used,' NOT 'statistically confirmed.'
+    closest_but_unrelated: >
+      The one historically-claimed statistical correlation (Gauquelin's 'Mars
+      effect') concerns the NATAL diurnal position of certain planets near the
+      angles and professional eminence -- not transits, not solar arc, not any
+      predictive rule here. It remains contested and not robustly replicated, and
+      it does not support any rule below.
+  weight_meaning: >
+    The 'weight' on each rule reflects the EMPHASIS the tradition places on it,
+    plus its rarity/datability for rectification. It is NOT a measured effect
+    size. No weight in this file is empirically calibrated.
+
+# ============================================================================
+# FALSIFICATION PROTOCOL  (pre-registered; applies to the whole method)
+# ============================================================================
+falsification_protocol:
+  expected_if_true: >
+    Across multiple charts with independently known and accurately recorded
+    birth times (entered blind), the true birth time should rank significantly
+    above the pure-random baseline -- its percentile among alternatives skewing
+    high -- more often than chance would predict. Ablating a genuinely supported
+    rule should measurably reduce this recovery.
+  would_count_as_failure: >
+    If known birth times consistently rank near the random baseline (percentiles
+    roughly uniform), or the rule set as a whole fails to outperform the null
+    model across independent validation charts, the methodology is not supported.
+    Each rule is additionally subject to its own per-rule falsifier.
+  note: >
+    These success/failure conditions are committed now, before validation, so the
+    outcome cannot be reinterpreted after the fact. Validation must use charts
+    OTHER than the builder's own (whose time and life are already known to them)
+    and, ideally, prospective predictions logged before outcomes are known.
+
+# ============================================================================
+# RULES
+# ============================================================================
+rules:
+
+  # ---- CAREER / PUBLIC DOMAIN  (Midheaven axis) --------------------------------
+  - id: tr_saturn_mc
+    name: "Transit Saturn to Midheaven"
+    traditional_claim: "Saturn crossing the MC/IC axis coincides with major career-structure events: culmination, heavy responsibility, redirection, or setback."
+    technique: transit
+    point: Saturn
+    aspects: [conjunction, opposition]
+    target: MC
+    max_orb_deg: 1.5
+    weight: 3
+    applies_to: [career, education, public]
+    traditional_use:
+      technique_lineage: "Predictive use of transits has ancient (Hellenistic/Mesopotamian) roots; the modern natal-transit method was systematised in the 20th c. (Robert Hand, 'Planets in Transit', 1976). Emphasis on transits to the ANGLES for rectification is modern (Brady, Forrest)."
+      significator_basis: "TRADITIONAL. Saturn as significator of career, authority, limitation and time is Hellenistic/classical; the Midheaven/10th as the place of career, action and reputation ('Praxis') is likewise ancient."
+      practitioners: "Universally used among modern astrologers (the Saturn return is its most popular form)."
+      acceptance: "Widely accepted WITHIN astrology, traditional and modern alike. The Saturn-to-MC formulation itself is a modern predictive commonplace built on a traditional significator."
+    empirical_status:
+      empirical_support: none_established
+      independent_evidence: "None known. No controlled study has tested this specific rule; support is anecdotal/experiential only."
+      label: "UNTESTED HYPOTHESIS"
+    falsification:
+      expected_if_true: "In charts with independently known birth times, major career-structure events should fall within 1.5 deg of transiting Saturn conjunct/opposite the MC more often than chance, and these Saturn-MC contacts should coincide with real career events more than with random dates."
+      would_count_as_failure: "If career events show no tendency to cluster at Saturn-MC contacts beyond chance, or the contacts land on random dates as often as on real career events, or removing this rule does not reduce known-time recovery, the rule is not supported and should be retired."
+    chosen_over: "Inner-planet transits to the MC (recur ~yearly, too frequent to be diagnostic) and outer-planet transits to the MC (rarer, reserved for turning-point rules). Saturn is the canonical structural career marker."
+
+  - id: tr_jupiter_mc
+    name: "Transit Jupiter to Midheaven"
+    traditional_claim: "Jupiter crossing the MC/IC axis coincides with career expansion, recognition, opportunity, or advancement."
+    technique: transit
+    point: Jupiter
+    aspects: [conjunction, opposition]
+    target: MC
+    max_orb_deg: 1.5
+    weight: 2
+    applies_to: [career, education, public]
+    traditional_use:
+      technique_lineage: "Same as tr_saturn_mc: ancient roots, modern natal-transit systematisation (Hand, 1976)."
+      significator_basis: "TRADITIONAL. Jupiter as the 'greater benefic' (growth, reward, opportunity) is Hellenistic/classical; MC/10th = career/honours is ancient."
+      practitioners: "Universally used among modern astrologers."
+      acceptance: "Widely accepted within astrology. Jupiter-to-MC = advancement is a modern predictive commonplace on a traditional significator."
+    empirical_status:
+      empirical_support: none_established
+      independent_evidence: "None known. No controlled study has tested this specific rule; support is anecdotal/experiential only."
+      label: "UNTESTED HYPOTHESIS"
+    falsification:
+      expected_if_true: "In known-time charts, career-expansion/recognition events should fall within 1.5 deg of transiting Jupiter conjunct/opposite the MC more often than chance, and these contacts should coincide with real advancement events more than with random dates."
+      would_count_as_failure: "If advancement events show no tendency to cluster at Jupiter-MC contacts beyond chance, or the contacts hit random dates as often, or ablating the rule does not reduce known-time recovery, the rule is not supported."
+    chosen_over: "Outer-planet transits for the 'positive career' slot: Jupiter is the classic benefic-to-MC and its ~12-year return keeps contacts datable. Weighted below Saturn because Jupiter contacts are more frequent and less structurally decisive."
+
+  - id: sa_sun_mc
+    name: "Solar Arc Sun to Midheaven"
+    traditional_claim: "The directed Sun reaching the MC/IC axis coincides with a rise in public status, a career peak, or a defining vocational milestone."
+    technique: solar_arc
+    point: Sun
+    aspects: [conjunction, opposition]
+    target: MC
+    max_orb_deg: 1.0
+    weight: 3
+    applies_to: [career, education, public]
+    traditional_use:
+      technique_lineage: "Directing significators to the angles is ancient (primary directions; Ptolemy's Tetrabiblos). The uniform 'solar arc' measure relates to Naibod's 16th-c. key, but solar arc DIRECTIONS as practised today were popularised in the 20th c. (Reinhold Ebertin/cosmobiology; Noel Tyl)."
+      significator_basis: "TRADITIONAL. Sun = vitality, status, honour and eminence; the luminary directed to the career angle mapping to honours is a classical/Ptolemaic idea. The specific solar-arc formulation is modern."
+      practitioners: "Ebertin, Tyl, and modern predictive/rectification practitioners generally."
+      acceptance: "Solar arc is widely used in modern astrology; the underlying 'luminary to angle = eminence' idea is traditional. Not part of the current strict-traditional (Hellenistic/medieval) revival, which favours primary directions."
+    empirical_status:
+      empirical_support: none_established
+      independent_evidence: "None known. No controlled study has tested this specific rule; support is anecdotal/experiential only."
+      label: "UNTESTED HYPOTHESIS"
+    falsification:
+      expected_if_true: "In known-time charts, public-status/career-peak milestones should fall within 1.0 deg of Solar Arc Sun conjunct/opposite the MC more often than chance."
+      would_count_as_failure: "If status/career-peak events show no tendency to coincide with SA Sun-MC contacts beyond chance, or the rule fires on random dates as often, or ablation does not reduce recovery, the rule is not supported."
+    chosen_over: "Solar Arc Saturn to MC, which would duplicate the transit-Saturn rule's planet-meaning. Using the Sun diversifies the evidence and gives an INDEPENDENT (directed) confirmation channel for MC events."
+
+  # ---- SELF / RELATIONSHIP DOMAIN  (Ascendant-Descendant axis) -----------------
+  - id: sa_venus_asc
+    name: "Solar Arc Venus to Ascendant"
+    traditional_claim: "The directed Venus reaching the ASC/DSC axis coincides with partnership events: relationship beginnings, engagement, or marriage."
+    technique: solar_arc
+    point: Venus
+    aspects: [conjunction, opposition]
+    target: ASC
+    max_orb_deg: 1.0
+    weight: 3
+    applies_to: [relationship, family]
+    traditional_use:
+      technique_lineage: "Directing to the angles is ancient; the solar-arc measure is Renaissance (Naibod) popularised in the 20th c. (Ebertin, Tyl)."
+      significator_basis: "TRADITIONAL. Venus as significator of love, union, women and marriage is Hellenistic/classical; the Descendant/7th as marriage and partnership is ancient. The solar-arc-to-angle timing is the modern expression of a very old significator logic."
+      practitioners: "Frequently cited by modern solar-arc practitioners (e.g. Tyl) for relationship timing; appears in practitioner case examples."
+      acceptance: "Widely used and often called a 'classic' rectification marker within modern astrology -- but 'classic' here means traditionally-established-and-popular, not empirically confirmed."
+    empirical_status:
+      empirical_support: none_established
+      independent_evidence: "None known. No controlled study has tested this specific rule; support is anecdotal/experiential only."
+      label: "UNTESTED HYPOTHESIS"
+    falsification:
+      expected_if_true: "In known-time charts, relationship/marriage events should fall within 1.0 deg of Solar Arc Venus conjunct/opposite the Ascendant axis more often than chance."
+      would_count_as_failure: "If relationship events show no tendency to coincide with SA Venus-angle contacts beyond chance, or the rule fires on random dates as often, or ablation does not reduce recovery, the rule is not supported."
+    chosen_over: "Transit Venus (recurs yearly -- non-diagnostic) and a house-based marriage rule (V1 scores angles only). Solar Arc Venus is rare, datable, and domain-specific, so it is hard to fit to an arbitrary story."
+
+  - id: sa_saturn_asc
+    name: "Solar Arc Saturn to Ascendant"
+    traditional_claim: "The directed Saturn reaching the ASC/DSC axis coincides with a weighty consolidation of the self-and-other axis: serious commitment, loss, or a maturing burden in relationships."
+    technique: solar_arc
+    point: Saturn
+    aspects: [conjunction, opposition]
+    target: ASC
+    max_orb_deg: 1.0
+    weight: 2
+    applies_to: [relationship, family]
+    traditional_use:
+      technique_lineage: "Directing to the angles is ancient; solar-arc measure Renaissance (Naibod), modern popularisation (Ebertin, Tyl)."
+      significator_basis: "TRADITIONAL. Saturn = commitment, consolidation, restriction, loss and time (classical malefic); ASC = self/body/life is ancient. Paired with Solar Arc Venus it gives the relational axis a benefic + malefic reading, a traditional pairing logic."
+      practitioners: "Modern solar-arc practitioners; Saturn-to-angle contacts are standard in modern predictive work."
+      acceptance: "Widely used in modern astrology; significator basis is traditional, technique modern."
+    empirical_status:
+      empirical_support: none_established
+      independent_evidence: "None known. No controlled study has tested this specific rule; support is anecdotal/experiential only."
+      label: "UNTESTED HYPOTHESIS"
+    falsification:
+      expected_if_true: "In known-time charts, serious commitment/loss events on the self-relationship axis should fall within 1.0 deg of Solar Arc Saturn conjunct/opposite the Ascendant axis more often than chance."
+      would_count_as_failure: "If such events show no tendency to coincide with SA Saturn-angle contacts beyond chance, or the rule fires on random dates as often, or ablation does not reduce recovery, the rule is not supported."
+    chosen_over: "A second Venus rule (redundant). Saturn supplies the DISTINCT 'heavy/committing/ending' flavour that Venus does not, widening domain coverage without adding a fast-planet noise source."
+
+  # ---- MAJOR TURNING POINTS  (Ascendant) --------------------------------------
+  - id: tr_uranus_asc
+    name: "Transit Uranus to Ascendant"
+    traditional_claim: "Uranus crossing the ASC/DSC axis coincides with a sudden major change of life direction or a decisive shift in identity/circumstances."
+    technique: transit
+    point: Uranus
+    aspects: [conjunction, opposition]
+    target: ASC
+    max_orb_deg: 1.5
+    weight: 3
+    applies_to: any
+    traditional_use:
+      technique_lineage: "Transit method as above."
+      significator_basis: "WHOLLY MODERN. Uranus was discovered in 1781, so every attribution (sudden change, disruption, freedom, awakening) is post-1781, developed in the 19th-20th c. There is NO classical/traditional basis for this planet, and strict-traditional astrologers do not use it."
+      practitioners: "Standard in modern Western astrology; absent from Hellenistic/medieval practice."
+      acceptance: "Widely accepted among MODERN astrologers only. A traditional astrologer would not include this rule at all."
+    empirical_status:
+      empirical_support: none_established
+      independent_evidence: "None known. No controlled study has tested this specific rule; support is anecdotal/experiential only."
+      label: "UNTESTED HYPOTHESIS"
+      note: "Doubly unsupported: no traditional pedigree (planet unknown before 1781) AND no empirical test."
+    falsification:
+      expected_if_true: "In known-time charts, sudden major life-direction changes should fall within 1.5 deg of transiting Uranus conjunct/opposite the Ascendant axis more often than chance."
+      would_count_as_failure: "If abrupt turning-point events show no tendency to coincide with Uranus-angle contacts beyond chance, or the rule fires on random dates as often, or ablation does not reduce recovery, the rule is not supported."
+    chosen_over: "A house-based or fast-planet upheaval rule. Outer-planet-to-angle contacts are so rare (~84-yr cycle) they cannot be bent to fit an arbitrary date. Applies to any category because life-direction shocks are cross-domain; importance weighting handles minor events."
+
+  - id: tr_pluto_asc
+    name: "Transit Pluto to Ascendant"
+    traditional_claim: "Pluto crossing the ASC/DSC axis coincides with a profound, life-altering transformation of self or circumstances."
+    technique: transit
+    point: Pluto
+    aspects: [conjunction, opposition]
+    target: ASC
+    max_orb_deg: 1.5
+    weight: 3
+    applies_to: any
+    traditional_use:
+      technique_lineage: "Transit method as above."
+      significator_basis: "WHOLLY MODERN. Pluto was discovered in 1930, so all attributions (transformation, power, death/rebirth, the unconscious) are 20th-c., largely from psychological and evolutionary astrology. No classical/traditional basis; strict-traditional astrologers do not use it."
+      practitioners: "Standard in modern Western astrology; absent from Hellenistic/medieval practice."
+      acceptance: "Widely accepted among MODERN astrologers only. A traditional astrologer would not include this rule at all."
+    empirical_status:
+      empirical_support: none_established
+      independent_evidence: "None known. No controlled study has tested this specific rule; support is anecdotal/experiential only."
+      label: "UNTESTED HYPOTHESIS"
+      note: "Doubly unsupported: no traditional pedigree (planet unknown before 1930) AND no empirical test."
+    falsification:
+      expected_if_true: "In known-time charts, profound life-altering transformations should fall within 1.5 deg of transiting Pluto conjunct/opposite the Ascendant axis more often than chance."
+      would_count_as_failure: "If transformational events show no tendency to coincide with Pluto-angle contacts beyond chance, or the rule fires on random dates as often, or ablation does not reduce recovery, the rule is not supported."
+    chosen_over: "Enumerating all three outer planets as separate rules (would inflate the count). Uranus (sudden change) + Pluto (deep transformation) cover the turning-point space; Neptune is omitted from V1 as its diffuse, hard-to-date symbolism is the weakest rectification signal of the three."
+
+# ============================================================================
+# END OF V1 RULE SET  (7 rules)  --  METHODOLOGY FROZEN
+#   Transits (slow planets only): Saturn->MC, Jupiter->MC, Uranus->ASC, Pluto->ASC
+#   Solar arc:                    Sun->MC, Venus->ASC, Saturn->ASC
+#   Traditional significator basis: rules 1-5 classical; rules 6-7 wholly modern.
+#   Empirical support: none_established for all seven (untested hypotheses).
+#   Each rule carries its own pre-registered falsifier; see falsification_protocol.
+# ============================================================================

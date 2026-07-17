@@ -1,0 +1,6 @@
+# Pinned for reproducibility — every rectification run logs these versions.
+pyswisseph==2.10.3.2
+# Swiss Ephemeris C library bundled with the above: 2.10.03
+# Ephemeris backend: Moshier (built-in, no external .se1 data files required).
+# For the gold-standard JPL-derived files, download the Swiss Ephemeris .se1
+# set, call swe.set_ephe_path(<dir>), and switch EPHE_FLAG to FLG_SWIEPH.
