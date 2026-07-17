@@ -1,3 +1,4 @@
+"""
 store.py -- the data spine of the rectification engine.
 
 A thin, validated wrapper over a single SQLite file. UI-free and pure data:
