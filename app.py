@@ -28,6 +28,10 @@ FRAMING = (
     "Every number is relative and within-system — not a probability of being correct."
 )
 
+CATEGORY_OPTS = ["career", "education", "public", "relationship", "family", "health", "other"]
+VALENCE_OPTS = ["positive", "negative", "mixed", "neutral"]
+PRECISION_OPTS = ["exact_day", "exact_month", "season", "year_only", "estimated_period"]
+
 st.set_page_config(page_title="Chart Rectification — research", layout="wide")
 
 
@@ -117,6 +121,7 @@ with tab_data:
                 store.set_birth_data(conn, subject_id, birth_date.strip(), float(lat), float(lon),
                                      float(offset), tz_note.strip() or None,
                                      known.strip() or None, s_start.strip(), s_end.strip())
+                st.session_state.pop("sweep", None)  # birth data changed -> results are stale
                 st.success("Saved.")
                 st.rerun()
             except Exception as e:
@@ -142,24 +147,66 @@ with tab_events:
     else:
         st.write("_No events yet._")
 
+    # --- add --- #
     with st.expander("➕ Add an event"):
         with st.form("add_event"):
             a1, a2 = st.columns(2)
             e_title = a1.text_input("Title")
             e_date = a2.text_input("Date (YYYY-MM-DD)")
             a3, a4, a5 = st.columns(3)
-            e_cat = a3.selectbox("Category", sorted(store.CATEGORIES))
-            e_val = a4.selectbox("Valence", sorted(store.VALENCES))
+            e_cat = a3.selectbox("Category", CATEGORY_OPTS)
+            e_val = a4.selectbox("Valence", VALENCE_OPTS)
             e_imp = a5.slider("Importance", 1, 10, 6)
-            e_prec = st.selectbox("Date precision", list(store.DATE_PRECISIONS))
+            e_prec = st.selectbox("Date precision", PRECISION_OPTS)
             if st.form_submit_button("Add event") and e_title.strip() and e_date.strip():
                 try:
                     store.add_event(conn, subject_id, e_title.strip(), e_cat, e_val,
                                     e_date.strip(), e_prec, int(e_imp))
+                    st.session_state.pop("sweep", None)  # timeline changed -> results are stale
                     st.success("Added.")
                     st.rerun()
-                except Exception as e:
-                    st.error(f"Could not add: {e}")
+                except Exception as ex:
+                    st.error(f"Could not add: {ex}")
+
+    # --- edit / delete --- #
+    if events:
+        with st.expander("✏️ Edit or delete an event"):
+            emap = {f"{e.event_date} · {e.title}  (#{e.id})": e for e in events}
+            pick = st.selectbox("Pick an event", list(emap.keys()), key="edit_pick")
+            ev = emap[pick]
+
+            with st.form("edit_event"):
+                b1, b2 = st.columns(2)
+                u_title = b1.text_input("Title", ev.title, key=f"ut_{ev.id}")
+                u_date = b2.text_input("Date (YYYY-MM-DD)", ev.event_date, key=f"ud_{ev.id}")
+                b3, b4, b5 = st.columns(3)
+                u_cat = b3.selectbox("Category", CATEGORY_OPTS,
+                                     index=CATEGORY_OPTS.index(ev.category), key=f"uc_{ev.id}")
+                u_val = b4.selectbox("Valence", VALENCE_OPTS,
+                                     index=VALENCE_OPTS.index(ev.valence), key=f"uv_{ev.id}")
+                u_imp = b5.slider("Importance", 1, 10, int(ev.importance), key=f"ui_{ev.id}")
+                u_prec = st.selectbox("Date precision", PRECISION_OPTS,
+                                      index=PRECISION_OPTS.index(ev.date_precision), key=f"up_{ev.id}")
+                if st.form_submit_button("Save changes") and u_title.strip() and u_date.strip():
+                    try:
+                        store.update_event(conn, ev.id, u_title.strip(), u_cat, u_val,
+                                           u_date.strip(), u_prec, int(u_imp))
+                        st.session_state.pop("sweep", None)
+                        st.success("Updated.")
+                        st.rerun()
+                    except Exception as ex:
+                        st.error(f"Could not update: {ex}")
+
+            st.markdown("---")
+            confirm = st.checkbox("Yes, permanently delete this event", key=f"del_ok_{ev.id}")
+            if st.button("🗑 Delete event", key=f"del_btn_{ev.id}"):
+                if confirm:
+                    store.delete_event(conn, ev.id)
+                    st.session_state.pop("sweep", None)
+                    st.success("Deleted.")
+                    st.rerun()
+                else:
+                    st.warning("Tick the confirm box first.")
 
 # ---- 3. rectify ----------------------------------------------------------- #
 with tab_run:
