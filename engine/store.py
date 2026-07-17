@@ -1,4 +1,4 @@
-"""
+sqlite3.connect(..., check_same_thread=False)"""
 store.py -- the data spine of the rectification engine.
 
 A thin, validated wrapper over a single SQLite file. UI-free and pure data:
