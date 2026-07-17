@@ -1,4 +1,3 @@
-sqlite3.connect(..., check_same_thread=False)"""
 store.py -- the data spine of the rectification engine.
 
 A thin, validated wrapper over a single SQLite file. UI-free and pure data:
@@ -157,12 +156,10 @@ class Event:
 # Connection & init
 # =============================================================================
 def connect(path: str) -> sqlite3.Connection:
-    conn = sqlite3.connect(path)
+    conn = sqlite3.connect(path, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON;")
     return conn
-
-
 def init_db(path: str) -> sqlite3.Connection:
     conn = connect(path)
     conn.executescript(_SCHEMA)
