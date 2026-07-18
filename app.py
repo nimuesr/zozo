@@ -208,6 +208,21 @@ with tab_events:
                 else:
                     st.warning("Tick the confirm box first.")
 
+        with st.expander("🧹 Remove several at once (clear a cluster / duplicates)"):
+            emap2 = {f"{e.event_date} · {e.title}  (#{e.id})": e for e in events}
+            picks = st.multiselect("Select the events to remove", list(emap2.keys()), key="bulk_pick")
+            confirm_bulk = st.checkbox(
+                f"Yes, permanently delete the {len(picks)} selected event(s)",
+                key="bulk_ok", disabled=not picks)
+            if st.button("🗑 Delete selected", key="bulk_btn", disabled=not picks):
+                if confirm_bulk:
+                    n = store.delete_events(conn, [emap2[p].id for p in picks])
+                    st.session_state.pop("sweep", None)
+                    st.success(f"Deleted {n} event(s).")
+                    st.rerun()
+                else:
+                    st.warning("Tick the confirm box first.")
+
 # ---- 3. rectify ----------------------------------------------------------- #
 with tab_run:
     st.subheader("Run a rectification")
@@ -280,8 +295,51 @@ with tab_run:
             if birth.known_time:
                 st.caption("Dashed crimson line = the known time (validation only).")
 
-            # honest ranking table
-            st.markdown("#### Candidates — ranked by percentile-among-alternatives (noise-aware, not raw fit)")
+            # rising-sign view (forgiving: a whole sign is a ~2-hour target, not a knife-edge)
+            st.markdown("#### Rising sign — the forgiving view")
+            st.caption("Even when no single minute wins, one rising sign often still holds more of "
+                       "the evidence — a whole sign sits on the horizon for about two hours, a far "
+                       "bigger target than one exact minute.")
+            sign_df = pd.DataFrame([{
+                "rising_sign": rising_sign(birth, c.local_time),
+                "internal_fit": c.internal_fit,
+            } for c in cands])
+            agg = (sign_df.groupby("rising_sign")
+                   .agg(total_fit=("internal_fit", "sum"),
+                        steps=("internal_fit", "count"),
+                        best_fit=("internal_fit", "max"))
+                   .reset_index())
+            total_all = float(agg["total_fit"].sum())
+            steps_all = int(agg["steps"].sum())
+            agg["fit_share"] = agg["total_fit"] / total_all if total_all > 0 else 0.0
+            agg["window_share"] = agg["steps"] / steps_all
+            agg = agg.sort_values("total_fit", ascending=False)
+
+            if total_all <= 0:
+                st.info("No rules fired at any time yet — add more events, especially **different "
+                        "types** (relationship, family, moves), so the rising-related rules can fire.")
+            else:
+                top_sign = agg.iloc[0]
+                bar = alt.Chart(agg).mark_bar().encode(
+                    x=alt.X("total_fit:Q", title="total evidence (summed fit)"),
+                    y=alt.Y("rising_sign:N", sort="-x", title=None),
+                    tooltip=["rising_sign",
+                             alt.Tooltip("total_fit:Q", format=".2f", title="total evidence"),
+                             alt.Tooltip("fit_share:Q", format=".0%", title="share of evidence"),
+                             alt.Tooltip("window_share:Q", format=".0%", title="share of window (time rising)")],
+                ).properties(height=min(360, 26 * len(agg) + 40))
+                st.altair_chart(bar, use_container_width=True)
+                meaningful = top_sign["fit_share"] > top_sign["window_share"] + 0.03
+                st.caption(
+                    f"Front-runner: **{top_sign['rising_sign']} rising** — it holds "
+                    f"{top_sign['fit_share']:.0%} of the evidence while it's only rising for "
+                    f"{top_sign['window_share']:.0%} of the searched window. "
+                    + ("It's pulling **more than its share of time** — that's the meaningful case, "
+                       "a genuine lean toward this sign."
+                       if meaningful else
+                       "That's about the **same** as its share of the day, so hold it loosely — it "
+                       "may just be rising longer, not fitting better.")
+                )
             table = pd.DataFrame([{
                 "rank": i + 1,
                 "time": c.local_time,
