@@ -157,6 +157,9 @@ class Event:
 # Connection & init
 # =============================================================================
 def connect(path: str) -> sqlite3.Connection:
+    # check_same_thread=False: Streamlit serves requests on worker threads other
+    # than the one that opened the connection, and SQLite otherwise refuses to be
+    # used across threads. Safe here because our writes are short and serialized.
     conn = sqlite3.connect(path, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON;")
@@ -277,6 +280,16 @@ def update_event(
 def delete_event(conn: sqlite3.Connection, event_id: int) -> None:
     conn.execute("DELETE FROM events WHERE id = ?", (event_id,))
     conn.commit()
+
+
+def delete_events(conn: sqlite3.Connection, event_ids) -> int:
+    """Delete many events in one transaction. Returns the number requested."""
+    ids = [(int(i),) for i in event_ids]
+    if not ids:
+        return 0
+    conn.executemany("DELETE FROM events WHERE id = ?", ids)
+    conn.commit()
+    return len(ids)
 
 
 # =============================================================================
