@@ -95,8 +95,14 @@ class CandidateResult:
     local_time: str
     internal_fit: float
     evidence_coverage: float
-    percentile_among_alternatives: float = 0.0
+    pct_floor: float = 0.0        # Method A: vs uniformly-random dates (generous floor)
+    pct_realistic: float = 0.0    # Method B: vs realistic (age-preserving) fake lives (sharper)
     hits: list = field(default_factory=list)   # (event_id, rule_id, technique, point, aspect, target, orb, points)
+
+    @property
+    def percentile_among_alternatives(self) -> float:
+        # the primary, honest metric is the sharper (realistic) ruler
+        return self.pct_realistic
 
 
 def _minutes_to_hhmm(minutes: int) -> str:
@@ -172,9 +178,39 @@ def _null_fits(natal, target_lon, prepped, grids, K, rng, day_lo, day_hi):
     return total
 
 
-# =============================================================================
-# The sweep
-# =============================================================================
+def _null_fits_realistic(natal, target_lon, prepped, grids, K, rng, real_offsets,
+                         jitter_days, min_off, max_off):
+    """Method B -- the age-preserving (realistic) null.
+
+    Instead of scattering event dates uniformly across a whole life (Method A,
+    which allows absurd lives like a first job at age 4), this builds *realistic*
+    fake lives: it takes the person's REAL set of event ages, shuffles which event
+    lands on which age, and jitters each within a band. Each event keeps its own
+    category/importance/precision. So the question becomes the honest one -- does
+    this chart fit the person's ACTUAL event->date pairing better than it fits a
+    different-but-realistic arrangement of the same life? That's a far tougher bar
+    than beating random noise, so it deflates the generous floor."""
+    n = len(prepped)
+    real = np.asarray(real_offsets)
+    # one independent permutation of the real ages per draw (vectorized)
+    order = rng.random((K, n)).argsort(axis=1)
+    perm = real[order]
+    jit = rng.integers(-jitter_days, jitter_days + 1, size=(K, n))
+    offs = np.clip(perm + jit, min_off, max_off)
+
+    total = np.zeros(K)
+    for i, meta in enumerate(prepped):
+        col = offs[:, i]
+        ev = np.zeros(K)
+        for rule in meta["rules"]:
+            moving = (grids.transit[rule.point][col] if rule.technique == "transit"
+                      else (natal[rule.point] + grids.arc[col]) % 360.0)
+            sep = _sep_vec(moving, target_lon[rule.target])
+            orbs = np.stack([np.abs(sep - ASPECT_ANGLES[a]) for a in rule.aspects])
+            best = orbs.min(axis=0)
+            ev += rule.weight * meta["sr"] * _decay_vec(best, rule.max_orb_deg)
+        total += ev
+    return total
 @dataclass
 class SweepResult:
     candidates: list                 # CandidateResult, ranked (best first)
@@ -190,8 +226,14 @@ def run_sweep(birth_data, events, rules, step_minutes=2, null_iterations=300,
     grids = build_grids(birth_data, rules, reference_time, years=life_years)
     prepped, total_reliability = _prep_events(events, rules)
 
-    # null draws over an adult life window (Stage-1 pure random)
+    # null draws over an adult life window (Method A: Stage-1 pure random)
     day_lo, day_hi = int(1 * 365.25), int(min(life_years, 88) * 365.25)
+    # Method B jitter band around each real age (+/- ~1.5 years)
+    jitter_days = int(1.5 * 365.25)
+
+    # real event ages (day-offsets from birth) -- candidate-independent, computed once.
+    # These are both the real evaluation offsets AND the source ages for Method B.
+    real_offsets = [grids.offset(scoring._event_noon_jd(m["date"])) for m in prepped]
 
     # sweep window
     sh, sm = (int(x) for x in birth_data.search_start.split(":"))
@@ -206,28 +248,31 @@ def run_sweep(birth_data, events, rules, step_minutes=2, null_iterations=300,
         angles = eph.chart_angles(natal_jd, birth_data.latitude, birth_data.longitude)
         target_lon = {"ASC": angles.ascendant, "MC": angles.midheaven}
 
-        event_offsets = [grids.offset(scoring._event_noon_jd(m["date"])) for m in prepped]
-        fit, coverage, hits = _real_eval(natal, target_lon, event_offsets,
+        fit, coverage, hits = _real_eval(natal, target_lon, real_offsets,
                                          prepped, total_reliability, grids)
 
-        nulls = _null_fits(natal, target_lon, prepped, grids, null_iterations, rng, day_lo, day_hi)
-        # percentile among alternatives: fraction of random timelines this chart beats
-        pct = float(np.mean(fit > nulls))
+        # two rulers: A = generous floor (random dates), B = realistic (age-preserving)
+        nulls_a = _null_fits(natal, target_lon, prepped, grids, null_iterations, rng, day_lo, day_hi)
+        nulls_b = _null_fits_realistic(natal, target_lon, prepped, grids, null_iterations, rng,
+                                       real_offsets, jitter_days, day_lo, day_hi)
+        pct_floor = float(np.mean(fit > nulls_a))
+        pct_realistic = float(np.mean(fit > nulls_b))
 
         results.append(CandidateResult(
             local_time=hhmm, internal_fit=fit, evidence_coverage=coverage,
-            percentile_among_alternatives=pct, hits=hits,
+            pct_floor=pct_floor, pct_realistic=pct_realistic, hits=hits,
         ))
 
-    # HONEST RANKING: by null-model standing first, then coverage, then raw fit.
-    results.sort(key=lambda c: (c.percentile_among_alternatives, c.evidence_coverage, c.internal_fit),
+    # HONEST RANKING: by the sharper (realistic) ruler first, then the floor,
+    # then coverage, then raw fit.
+    results.sort(key=lambda c: (c.pct_realistic, c.pct_floor, c.evidence_coverage, c.internal_fit),
                  reverse=True)
 
     config = {
         "techniques": sorted({r.technique for r in rules}),
         "n_rules": len(rules), "n_events": len(events),
         "step_minutes": step_minutes, "null_iterations": null_iterations,
-        "normalization": "stage1_pure_random", "life_years": life_years,
+        "normalization": "A_floor_plus_B_age_preserving", "life_years": life_years,
         "reference_time_for_grids": reference_time,
     }
     return SweepResult(candidates=results, step_minutes=step_minutes,
@@ -266,6 +311,9 @@ def summarize(sweep: "SweepResult") -> dict:
         "state": state,
         "top_time": top.local_time,
         "top_pct": top.percentile_among_alternatives,
+        "top_floor": top.pct_floor,
+        "top_realistic": top.pct_realistic,
+        "ruler_gap": top.pct_floor - top.pct_realistic,
         "second_pct": second_pct,
         "gap": gap,
         "n_ceiling": int(np.sum(pcts >= 0.999)),
