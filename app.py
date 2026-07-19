@@ -257,8 +257,19 @@ with tab_run:
             st.markdown("### Result")
             colA, colB, colC = st.columns(3)
             colA.metric("Result state", summary["state"].split(" — ")[0])
-            colB.metric("Top vs next-region gap", f"{summary['gap']:.3f}")
-            colC.metric("Candidates at ceiling", f"{summary['n_ceiling']} / {summary['n']}")
+            colB.metric("Realistic ruler (best time)", f"{summary['top_realistic']:.0%}",
+                        help="How much the best time beats REALISTIC fake lives. The honest, tougher test.")
+            colC.metric("Generous ruler (best time)", f"{summary['top_floor']:.0%}",
+                        help="The old easy test — beats random noise. Usually higher and less meaningful.")
+            st.caption(
+                f"**{summary['state']}.** Those are two graders for the same best time. The "
+                f"**realistic ruler ({summary['top_realistic']:.0%})** is the honest one — it grades "
+                f"against *realistic* fake lives, not random noise. The **generous ruler "
+                f"({summary['top_floor']:.0%})** is the old blurry one. The gap between them "
+                f"({summary['ruler_gap']:+.0%}) is roughly the false confidence we just removed. "
+                f"Separation of the front-runner from the next region: **{summary['gap']:.0%}** "
+                f"(bigger = more trustworthy; near zero = it's a tie)."
+            )
             st.caption(
                 f"**{summary['state']}.** With {summary['n']} candidate times, some reach a high "
                 "percentile purely by chance (multiple comparisons) — a high number alone is **not** "
@@ -275,8 +286,9 @@ with tab_run:
                 "rising_sign": rising_sign(birth, c.local_time),
             } for c in cands]).sort_values("minutes")
 
-            metric = st.radio("Show", ["internal_fit", "percentile_among_alternatives"],
-                              horizontal=True, index=0)
+            metric_label = st.radio("Show", ["evidence (internal fit)", "realistic-ruler percentile"],
+                                    horizontal=True, index=0)
+            metric = "internal_fit" if metric_label.startswith("evidence") else "percentile_among_alternatives"
             base = alt.Chart(curve).mark_area(opacity=0.5, interpolate="monotone").encode(
                 x=alt.X("minutes:Q", title="birth time",
                         axis=alt.Axis(values=list(range(0, 1441, 120)),
@@ -340,12 +352,33 @@ with tab_run:
                        "That's about the **same** as its share of the day, so hold it loosely — it "
                        "may just be rising longer, not fitting better.")
                 )
+
+                # sharper-ruler pressure test: best realistic-ruler minute in each top-2 sign
+                top2 = agg.head(2)["rising_sign"].tolist()
+                if len(top2) == 2:
+                    def best_realistic(sign):
+                        vals = [c.pct_realistic for c in cands
+                                if rising_sign(birth, c.local_time) == sign]
+                        return max(vals) if vals else 0.0
+                    b0, b1 = best_realistic(top2[0]), best_realistic(top2[1])
+                    clear = b0 - b1 > 0.10
+                    st.caption(
+                        f"**Sharper-ruler check** (best minute in each of the top two signs, graded "
+                        f"against realistic lives): **{top2[0]} {b0:.0%}** vs **{top2[1]} {b1:.0%}**. "
+                        + (f"{top2[0]} clears realistic lives more convincingly — that firms up the lean."
+                           if clear else
+                           f"They stay close even under the sharper ruler, so it's honestly a "
+                           f"**{top2[0]}–{top2[1]} race**: leaning {top2[0]}, but not settled.")
+                    )
+            # honest ranking table
+            st.markdown("#### Candidates — ranked by the realistic ruler (the honest, tougher grader)")
             table = pd.DataFrame([{
                 "rank": i + 1,
                 "time": c.local_time,
                 "rising sign": rising_sign(birth, c.local_time),
-                "pct-among-alternatives": round(c.percentile_among_alternatives, 3),
-                "evidence coverage": round(c.evidence_coverage, 2),
+                "realistic ruler": round(c.pct_realistic, 3),
+                "generous floor": round(c.pct_floor, 3),
+                "coverage": round(c.evidence_coverage, 2),
                 "internal fit": round(c.internal_fit, 2),
             } for i, c in enumerate(cands[:15])])
             st.dataframe(table, use_container_width=True, hide_index=True)
@@ -358,8 +391,8 @@ with tab_run:
                     st.markdown("#### Validation — where the known time landed")
                     v1, v2, v3 = st.columns(3)
                     v1.metric("Known time", birth.known_time)
-                    v2.metric("Rank in field", f"{krank + 1} / {len(cands)}")
-                    v3.metric("pct-among-alternatives", f"{kc.percentile_among_alternatives:.3f}")
+                    v2.metric("Realistic ruler", f"{kc.pct_realistic:.0%}")
+                    v3.metric("Generous floor", f"{kc.pct_floor:.0%}")
                     st.caption("This is one anecdote (n = 1). It cannot validate the method — only "
                                "many independently-known charts, entered blind, can.")
 
@@ -391,13 +424,74 @@ with tab_run:
             with cR:
                 st.markdown("**Contradicting / unexplained events**")
                 if contradicting:
-                    st.dataframe(pd.DataFrame(
-                        [{"event": e.title, "date": e.event_date, "category": e.category}
-                         for e in contradicting]), use_container_width=True, hide_index=True)
-                    st.caption("Events with no supporting contact at this time. Shown with equal "
-                               "prominence on purpose — the evidence *against* matters as much as the evidence for.")
+                    rows = []
+                    for e in contradicting:
+                        orbs = scoring.event_rule_orbs(birth, chosen.local_time, e, rules)
+                        rule, asp, orb = min(orbs, key=lambda t: t[2])  # nearest allowed contact
+                        rows.append({
+                            "event": e.title,
+                            "nearest allowed contact": f"{rule.point} {asp} {rule.target}",
+                            "orb°": round(orb, 2),
+                            "missed by°": round(orb - rule.max_orb_deg, 2),
+                        })
+                    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+                    st.caption("For each unexplained event, the closest contact its **category allows**, and "
+                               "how far outside the orb limit it fell. A tiny *missed by* — especially on a "
+                               "**fuzzy date** — is a near-miss, not a dead end. A large one means these two "
+                               "techniques just don't capture that event at this time.")
                 else:
                     st.write("_Every event has at least one supporting contact._")
+
+            # -------- event spotlight: where does ONE event light up across the day? --------
+            st.markdown("#### 🔦 Spotlight one event across the whole day")
+            st.caption("Pick an event — especially one that matters most to the person — and see where, "
+                       "if anywhere, it lights up as the birth time varies, and in which rising signs.")
+            ev_pick = st.selectbox("Event to spotlight", [e.title for e in events], key="spotlight")
+            spot = next(e for e in events if e.title == ev_pick)
+            m = len(cands)
+
+            fires = []  # (time, tightest orb, rising sign) for candidates where this event hits
+            for c in cands:
+                ev_hits = [h for h in c.hits if h[0] == spot.id]
+                if ev_hits:
+                    best = min(ev_hits, key=lambda h: h[6])  # index 6 = orb
+                    fires.append((c.local_time, best[6], rising_sign(birth, c.local_time)))
+
+            if fires:
+                sf = pd.DataFrame(fires, columns=["time", "orb", "rising_sign"])
+                best_row = sf.loc[sf["orb"].idxmin()]
+                st.write(f"**{ev_pick}** lights up at **{len(fires)} of {m}** candidate times. "
+                         f"Tightest hit: **{best_row['orb']:.2f}°** at **{best_row['time']}** "
+                         f"(**{best_row['rising_sign']} rising**).")
+                by_sign = (sf.groupby("rising_sign")
+                           .agg(times=("time", "count"), tightest_orb=("orb", "min"))
+                           .reset_index().sort_values("times", ascending=False))
+                spot_bar = alt.Chart(by_sign).mark_bar().encode(
+                    x=alt.X("times:Q", title="number of times it lights up"),
+                    y=alt.Y("rising_sign:N", sort="-x", title=None),
+                    tooltip=["rising_sign", "times",
+                             alt.Tooltip("tightest_orb:Q", format=".2f", title="tightest orb")],
+                ).properties(height=min(300, 26 * len(by_sign) + 40))
+                st.altair_chart(spot_bar, use_container_width=True)
+                st.caption("If this event lights up in a **different** sign than your front-runner, that's "
+                           "honest tension worth sitting with — not something to explain away.")
+            else:
+                st.write(f"**{ev_pick}** never lands within orb at **any** birth time in the search.")
+                coarse = []
+                for minute in range(0, 24 * 60, 8):
+                    t = f"{minute // 60:02d}:{minute % 60:02d}"
+                    orbs = scoring.event_rule_orbs(birth, t, spot, rules)
+                    rule, asp, orb = min(orbs, key=lambda x: x[2])
+                    coarse.append((orb, rule, asp, t))
+                orb, rule, asp, t = min(coarse, key=lambda x: x[0])
+                fuzzy = spot.date_precision in ("season", "estimated_period", "year_only")
+                st.caption(
+                    f"Closest it ever comes: **{rule.point} {asp} {rule.target} at {orb:.2f}°** (around {t}), "
+                    f"still outside the {rule.max_orb_deg:g}° limit. "
+                    + ("Because this event's date is **fuzzy**, the real contact may sit just off the date you "
+                       "entered — a more precise date could pull it inside the limit."
+                       if fuzzy else
+                       "These two techniques may simply not capture this particular event."))
 
             if st.session_state.get("saved_run"):
                 st.success(f"Saved as run #{st.session_state['saved_run']} "
