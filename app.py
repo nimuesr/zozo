@@ -40,8 +40,18 @@ st.set_page_config(page_title="Chart Rectification — research", layout="wide")
 # --------------------------------------------------------------------------- #
 @st.cache_resource
 def get_conn():
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    return store.init_db(DB_PATH)
+    import tempfile
+    tried = []
+    for path in (DB_PATH, os.path.join(tempfile.gettempdir(), "rectify_db.sqlite3")):
+        try:
+            folder = os.path.dirname(path)
+            if folder:
+                os.makedirs(folder, exist_ok=True)
+            return store.init_db(path)
+        except Exception as e:
+            tried.append(f"  {path} -> {type(e).__name__}: {e}")
+    st.error("Could not open a database in any writable location:\n" + "\n".join(tried))
+    st.stop()
 
 
 @st.cache_resource
